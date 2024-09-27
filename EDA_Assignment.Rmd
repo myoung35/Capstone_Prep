@@ -1,0 +1,279 @@
+---
+title: "EDA"
+author: "Madalyn Young"
+date: "2024-09-18"
+output:
+  html_document:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    toc-title: "Contents"
+    toc_float:
+      position: "left"
+execute:
+  warning: false
+  message: false
+---
+
+# Introduction
+
+The goal of the Home Credit project will be to determine which individuals should be selected for financial services. We want to create a prediction model to tell home credit who should be approved and who should not. Some issues we may face is that the clientele are sub optimal, being unbanked individuals.
+
+The purpose of this notebook is to explore that various data sources that home credit has provided us. I will want to explore correlation to the target variable, potential significance, distributions, etc. By the end of this portion of the project and this EDA notebook, I hope to have an idea of how to clean the data, which variables will be the strongest predictors and an idea of what model I will want to use.
+
+
+
+```{r echo = FALSE}
+pacman::p_load(tidyverse, scales, dplyr, corrr, janitor, tidyr)
+```
+
+```{r echo=FALSE}
+App_train <- read.csv("home-credit-default-risk//application_train.csv") 
+App_test <-  read.csv("home-credit-default-risk//application_test.csv") 
+```
+
+
+# Data Descriptions and Exploration
+
+Home Credit has provided us with a train and test set of the data. The test set has client ID's and additional information with the target variable removed. The train data set has everything the test set has with the addition of a binary target variable where 0 is not defaulted and 1 is defaulted. See below an exploration of the target variable:
+
+## Task 1
+
+**Q:** Explore the target variable in $application_{train|test}.csv$ Is the data unbalanced with respect to the target? What would the accuracy be for a simple model consisting in a majority class classifier?
+
+```{r}
+App_train %>% 
+  ggplot(aes(x=factor(TARGET))) +
+    geom_bar()+
+    labs(title = 'Count of Target Variable in Train Data',
+         x = '',
+         y = 'Count of Target') +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.background = element_blank(),
+          axis.line = element_line(colour = "black"))+
+    scale_y_continuous(labels = label_number(scale = 1e-3, suffix = "K"))
+
+```
+
+```{r}
+table(App_train$'TARGET')
+```
+
+```{r}
+prop.table(table(App_train$'TARGET'))
+```
+
+**A:** The data is heavily skewed toward clientele that have not defaulted on their loans with 92% of clients not defaulting. The accuracy of the majority class classifier will be 92%
+
+---
+
+There are 120 potential predictors that Home Credit has provided to us. To determine which variables might be most accurate in predicting default, I look at correlation, pairs panels, distribution of the predictors, etc. See below the exploration:
+
+## Task 2
+
+**Q:** Explore the relationship between target and predictors, looking for potentially strong predictors that could be included later in a model.
+
+```{r}
+#select only the numeric columns to analyze
+#numeric_columns <- sapply(App_train, is.numeric)
+App_train %>% 
+  corrr::correlate() %>% 
+  focus(TARGET)
+```
+days birth has a somewhat higher positive correlation at 0.08
+EXT_SOURCE_1 and EXT_SOURCE_2 are negatively correlated .16
+EXT_SOURCE_3 is neg correlated 0.18 -> these are normalized scores from an external data source
+
+```{r}
+table(App_train$CODE_GENDER, App_train$TARGET)
+options(scipen = 999)
+print(prop.table(table(App_train$CODE_GENDER, App_train$TARGET)))
+```
+The data seems to be skewed toward females, which means a higher percent of them are shown to default and might cause interferience in the predictions if used as a variable
+
+```{r}
+table(App_train$FLAG_OWN_CAR, App_train$TARGET)
+print(prop.table(table(App_train$FLAG_OWN_CAR, App_train$TARGET)))
+```
+A higher percent of people that default do not own a car 5.6% compared to 2.5% 5.6% of people defaulted and did not own a car
+
+```{r}
+table(App_train$FLAG_OWN_REALTY, App_train$TARGET)
+print(prop.table(table(App_train$FLAG_OWN_REALTY, App_train$TARGET)))
+```
+a higher percent of people that defaulted owned real estate. 5.5% versus 2.6% that owned a home. 5.5% of people defaulted and owned real estate.
+
+```{r}
+table(App_train$NAME_INCOME_TYPE, App_train$TARGET)
+print(prop.table(table(App_train$NAME_INCOME_TYPE, App_train$TARGET)))
+```
+Interesting Unemployed is one of the lower default rates, but the percent of total unemployed is low. 52% of people are working and of that group 5% defaulted
+
+```{r}
+table(App_train$NAME_EDUCATION_TYPE, App_train$TARGET)
+print(prop.table(table(App_train$NAME_EDUCATION_TYPE, App_train$TARGET)))
+```
+```{r}
+table(App_train$WEEKDAY_APPR_PROCESS_START, App_train$TARGET)
+print(prop.table(table(App_train$WEEKDAY_APPR_PROCESS_START, App_train$TARGET)))
+```
+
+looks like it does not matter what day the application starts it looks to be about the same default rate :)
+
+```{r}
+table(App_train$NAME_CONTRACT_TYPE, App_train$TARGET)
+print(prop.table(table(App_train$NAME_CONTRACT_TYPE, App_train$TARGET)))
+```
+More people are applying for cash loans. This skews the data so naturally more people default on cash loans. There are so little people applying for revolving loans, I do not think this is even relevant to look at. 
+
+---
+In addition to exploring correlations and variable distributions, I will utilize the skimr package in R to easily veiw missing data, standard deviations, unique values, and to clean the data. See below:
+
+## Task 3
+The skimr package in R has some great data exploration tools, and the janitor package has utilities that will simplify data cleaning.
+
+```{r}
+library(skimr)
+skim(App_train)
+```
+```{r echo = false}
+#this code changes the column names to lowercase and with _ brackets. This data already has underbrackets so I will comment out for now
+#before
+#names(App_train)
+#janitor
+#App_train <- clean_names(App_train)
+#after
+#names(App_train)
+
+```
+```{r}
+dupes <- get_dupes(App_train, SK_ID_CURR)
+print(dupes)
+
+
+```
+No duplicates in the data, so we won't have to do any cleaning here.
+
+```{r}
+#frequency table
+App_train %>% 
+  tabyl(CODE_GENDER)
+```
+This is another way to show the dwistribution of a variable. I looked at gender again and I see it is skewed heavily toward female and there are 4 NAs in the data.
+
+---
+# Discussion of Missing Data and Data Problems
+
+The following tasks are to identify variables that have a lot of missing data and any clientele that have all missing potential predictors. This will help us determine how to clean the data 
+
+## Task 4
+Explore the scope of missing data in application_{train|test}.csv and come up with possible solutions. Remove rows?  Remove columns?  Impute?
+
+```{r}
+App_train %>% 
+  summarize_all(~ sum(is.na(.))) %>% 
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "missing_count") %>% 
+  arrange(desc(missing_count))
+```
+There are 307,511 rows in total. 
+
+I would remove columns that have over half missing data just as a starting baseline. This would remove about 40 columns. this removes most columns about the information of the building the client currently lives in.
+
+```{r}
+missing_rows <- App_train %>% 
+  filter(rowSums(is.na(.)) == ncol(.)) %>% 
+  summarize(rows_with_missing_data = n())
+
+print(missing_rows)
+```
+
+There are no clients that are fully missing any data so I think we are good to keep each client id
+
+---
+
+The following task I attempt to identify any outliers, odd data, or issues
+
+## Task 5
+Be alert to problems in the data.  Do the values make sense? Are there mistaken values that should be cleaned or imputed? (Note that outliers are not necessarily mistakes. Check APM for advice on how to handle outliers for a predictive project.) Are there columns with near-zero or zero variance?
+
+```{r}
+#check age to make sure all of them make sense
+#check cnt_fam_members
+hist(App_train$DAYS_BIRTH/365)
+
+hist(App_train$CNT_CHILDREN) 
+
+hist(App_train$CNT_FAM_MEMBERS) 
+
+max(App_train$AMT_INCOME_TOTAL) 
+```
+There are no weird ages. The min is 20, the max is 69. 
+
+The number of kids is fairly normal, however the max is 19 kids. This seems extreme, maybe incorrect
+
+There are a lot of NAs in count of family members
+
+The max income is $117M. Based on the clientele that Home Credit focuses on, this seems like an outlier that should be excluded.
+
+```{r}
+unique(App_train$OCCUPATION_TYPE)
+```
+```{r}
+App_train %>% 
+  filter(OCCUPATION_TYPE == "") %>% 
+  count()
+```
+
+96K in missing occupation_type. 
+
+```{r}
+#small variance for children, makes sense to me
+var(App_train$cnt_children, na.rm = TRUE)
+
+#smaller variance than some other variables
+var(App_train$days_last_phone_change, na.rm = TRUE)
+
+```
+There is a small variance for the number of children, which I think makes sense because that is a category that is normaly pretty standard person to person.
+
+## Task 6
+Will the input data need to be transformed in order to be used in a model? You might answer this question differently for different models. (For example, some models might accept factor variables, others might not.) You can put off answering this question for now,  but you should begin thinking about it. Check APM for advice.
+
+--- 
+
+Another data set available to us from Home Credit is the transactional data. The following is an exploration of these tables.
+
+## Task 7
+Join application_{train|test}.csv with transactional data in, for example, bureau.csv or previous_application.csv. This will require aggregating the transactional data to have the same grain as the application data.
+
+```{r}
+previous_application <-  read.csv("home-credit-default-risk//previous_application.csv")
+
+bureau <- read.csv("home-credit-default-risk//bureau.csv")
+```
+
+
+```{r}
+n_distinct(bureau$SK_ID_CURR)
+
+bureau_aggregated <- bureau %>% 
+  group_by(SK_ID_CURR) %>% 
+  summarize(
+    n_loans = n(),
+    avg_loan_amt = mean(AMT_CREDIT_SUM, na.rm = TRUE),
+    max_loan_duration = max(DAYS_CREDIT_ENDDATE, na.rm = TRUE)
+  )
+```
+```{r}
+combined_data <- App_train %>% 
+  left_join(bureau_aggregated, by = "SK_ID_CURR")
+```
+
+# Task 8
+Explore the joined transactional data.  Do some of the added columns show promise in predicting default?
+
+```{r}
+
+```
+
