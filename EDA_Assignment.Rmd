@@ -15,6 +15,8 @@ execute:
   message: false
 ---
 
+hello world
+
 # Introduction
 
 The goal of the Home Credit project will be to determine which individuals should be selected for financial services. We want to create a prediction model to tell home credit who should be approved and who should not. Some issues we may face is that the clientele are sub optimal, being unbanked individuals.
@@ -24,7 +26,7 @@ The purpose of this notebook is to explore that various data sources that home c
 
 
 ```{r echo = FALSE}
-pacman::p_load(tidyverse, scales, dplyr, corrr, janitor, tidyr)
+pacman::p_load(tidyverse, scales, dplyr, corrr, janitor, tidyr, psych)
 ```
 
 ```{r echo=FALSE}
@@ -66,7 +68,6 @@ prop.table(table(App_train$'TARGET'))
 
 **A:** The data is heavily skewed toward clientele that have not defaulted on their loans with 92% of clients not defaulting. The accuracy of the majority class classifier will be 92%
 
----
 
 There are 120 potential predictors that Home Credit has provided to us. To determine which variables might be most accurate in predicting default, I look at correlation, pairs panels, distribution of the predictors, etc. See below the exploration:
 
@@ -127,7 +128,7 @@ print(prop.table(table(App_train$NAME_CONTRACT_TYPE, App_train$TARGET)))
 ```
 More people are applying for cash loans. This skews the data so naturally more people default on cash loans. There are so little people applying for revolving loans, I do not think this is even relevant to look at. 
 
----
+
 In addition to exploring correlations and variable distributions, I will utilize the skimr package in R to easily veiw missing data, standard deviations, unique values, and to clean the data. See below:
 
 ## Task 3
@@ -137,7 +138,7 @@ The skimr package in R has some great data exploration tools, and the janitor pa
 library(skimr)
 skim(App_train)
 ```
-```{r echo = false}
+```{r echo = FALSE}
 #this code changes the column names to lowercase and with _ brackets. This data already has underbrackets so I will comment out for now
 #before
 #names(App_train)
@@ -147,6 +148,7 @@ skim(App_train)
 #names(App_train)
 
 ```
+
 ```{r}
 dupes <- get_dupes(App_train, SK_ID_CURR)
 print(dupes)
@@ -162,7 +164,6 @@ App_train %>%
 ```
 This is another way to show the dwistribution of a variable. I looked at gender again and I see it is skewed heavily toward female and there are 4 NAs in the data.
 
----
 # Discussion of Missing Data and Data Problems
 
 The following tasks are to identify variables that have a lot of missing data and any clientele that have all missing potential predictors. This will help us determine how to clean the data 
@@ -190,7 +191,6 @@ print(missing_rows)
 
 There are no clients that are fully missing any data so I think we are good to keep each client id
 
----
 
 The following task I attempt to identify any outliers, odd data, or issues
 
@@ -229,18 +229,16 @@ App_train %>%
 
 ```{r}
 #small variance for children, makes sense to me
-var(App_train$cnt_children, na.rm = TRUE)
+var(App_train$CNT_CHILDREN, na.rm = TRUE)
 
 #smaller variance than some other variables
-var(App_train$days_last_phone_change, na.rm = TRUE)
+var(App_train$DAYS_LAST_PHONE_CHANGE, na.rm = TRUE)
 
 ```
 There is a small variance for the number of children, which I think makes sense because that is a category that is normaly pretty standard person to person.
 
 ## Task 6
 Will the input data need to be transformed in order to be used in a model? You might answer this question differently for different models. (For example, some models might accept factor variables, others might not.) You can put off answering this question for now,  but you should begin thinking about it. Check APM for advice.
-
---- 
 
 Another data set available to us from Home Credit is the transactional data. The following is an exploration of these tables.
 
@@ -270,10 +268,23 @@ combined_data <- App_train %>%
   left_join(bureau_aggregated, by = "SK_ID_CURR")
 ```
 
-# Task 8
+## Task 8
 Explore the joined transactional data.  Do some of the added columns show promise in predicting default?
 
 ```{r}
-
+combined_data %>% 
+  select(TARGET, n_loans, avg_loan_amt, max_loan_duration) %>% 
+  drop_na() %>% 
+  filter(max_loan_duration != '-Inf') %>% 
+  pairs.panels()
 ```
+There is no correlation between the target variable and the number of loans. low correlation for the other variables as well.
+
+# Results Section
+
+Home Credit has provided a lot of data and a vast amount of potential predictors to build this model. In my exploration I found some intuitively useless information such as the many columns regarding where the applicant currently resides. When I looked at this data further I found that over half of the clients provided actually had these fields missing. I think we should remove these columns from our analysis.
+
+The data is also very heavily skewed toward the female gender, so we will need to account for that in our analysis and model building. 
+
+I did not find many strong correlations between target and potential predictors, which makes it challenging to determine which variables we should use when building the model. The variables I am inclined to use are days_birth, days_employed, flag_own_car, potentially an interaction between loan_duration and number of loans, and education.
 
