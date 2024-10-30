@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r echo = FALSE, warning=FALSE}
-pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2)
+pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest)
 ```
 
 
@@ -22,6 +22,8 @@ App_train <- App_train %>%
   filter(AMT_INCOME_TOTAL <= 1000000) %>% 
   filter(CNT_CHILDREN <= 15) %>% 
   mutate(Age = -DAYS_BIRTH/365)
+
+App_train$TARGET <- as.factor(App_train$TARGET)
 ```
 
 ```{r}
@@ -132,6 +134,9 @@ inTrain <- createDataPartition(App_train$TARGET, p = .1, list = FALSE)
 train_set <- App_train[inTrain,]
 test_set <- App_train[-inTrain,]
 
+test_target <- App_train[-inTrain,2]
+
+
 ```
 
 
@@ -153,6 +158,7 @@ glmModel1 <- glm(TARGET~ 1, family = binomial, data = train_set)
 
 summary(glmModel1)
 ```
+
 ```{r}
 prob <- exp(coef(glmModel1)[1]) / (1 + exp(coef(glmModel1)[1]))
 prob
@@ -180,3 +186,51 @@ glmModel2 <- glm(TARGET~Age + EXT_SOURCE_2+ AMT_INCOME_TOTAL*CNT_CHILDREN, famil
 summary(glmModel2)
 ```
 number of children and income are not significant. Their interaction is significant at the 95
+
+```{r}
+
+predictions <- predict(glmModel1, newdata = test_set)
+summary(predictions)
+
+##All thses are returning null???
+mmetric(test_target, predictions, "ACC")
+
+
+```
+
+```{r}
+all.vars(formula(glmModel2)) %in% names(test_set)
+
+sum(is.na(test_set))
+
+length(test_set)
+```
+
+
+NOT sure how to do AUC or ACC since the lengths of predictions and test_set are differnet and I am getting more predictions than in the test set and I have no idea why it is doing that. 
+
+# Task 4
+**Explore using algorithms like random forest and gradient boosting. Compare model performance.**
+
+```{r}
+train_setNA <- train_set %>% 
+  select(TARGET, CNT_CHILDREN, AMT_INCOME_TOTAL, AMT_CREDIT, EXT_SOURCE_2, NAME_FAMILY_STATUS) %>% 
+  na.omit()
+
+rfModel1 <- randomForest(TARGET~ CNT_CHILDREN + AMT_INCOME_TOTAL + AMT_CREDIT + EXT_SOURCE_2 + NAME_FAMILY_STATUS,
+                         data = train_setNA)
+
+rfModel1
+```
+
+```{r}
+rfModel1Preds <- predict(rfModel1, newdata = test_set)
+
+summary(rfModel1Preds)
+
+mmetric(test_target, rfModel1Preds, "ACC")
+```
+# Task 5
+**Perform the data transformations required by a given algorithm.  For example, some algorithms require numeric data and perform better when it has been standardized or normalized. **
+
+do svm
