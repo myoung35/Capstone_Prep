@@ -6,20 +6,22 @@ output: html_document
 ---
 
 ```{r echo = FALSE, warning=FALSE}
-pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest)
+pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR)
 ```
 
 
 ```{r echo=FALSE}
 App_train <- read.csv("home-credit-default-risk//application_train.csv") 
 App_test <-  read.csv("home-credit-default-risk//application_test.csv") 
+
+App_train2 <- read.csv("home-credit-default-risk//application_train.csv") 
 ```
 
 ```{r}
 #clean up App_Train
 App_train <- App_train %>% 
   select(where(~ mean(is.na(.)) <= 0.57)) %>% 
-  filter(AMT_INCOME_TOTAL <= 1000000) %>% 
+  filter(AMT_INCOME_TOTAL <= 2000000) %>% #42 people default between 1M and 2M 
   filter(CNT_CHILDREN <= 15) %>% 
   mutate(Age = -DAYS_BIRTH/365)
 
@@ -27,12 +29,15 @@ App_train$TARGET <- as.factor(App_train$TARGET)
 ```
 
 ```{r}
-ggplot(App_train, aes(x=Age)) +
-  geom_bar()
+#checking the outliers 
+App_train2 %>% ggplot( aes(y=SK_ID_CURR, x=AMT_INCOME_TOTAL)) + geom_point()
 ```
 
 
+
 ```{r}
+
+#checking how many missing values are in each ext source
 scores <- App_train[,c("SK_ID_CURR", "EXT_SOURCE_1", "EXT_SOURCE_2","EXT_SOURCE_3")]
 
 sum(is.na(scores$EXT_SOURCE_2))
@@ -47,58 +52,11 @@ sum(is.na(App_train2$EXT_SOURCE_2))
 
 #172 IDs with missing credit
 ```
-only 660 rows of nulls in the ext_source 2
-
-He said the NA's can be predicitive. maybe we should use all three.
+only 660 rows of nulls in the ext_source 3. Only 172 missing in 2
 
 Most NAs in source 1. over half 
 
-```{r}
-#model 1
-model <- lm(TARGET~EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3, data = App_train2)
 
-summary(model)
-
-#lm deletes the missing values. what happens if I replace nulls with 0?
-
-# even when I replace with zero they are all significant
-
-#leaderboard divided ext_source_3 with good results
-  # you can divide total debt by the credit score to get debt burden relative to lift 
-
-## We want to try this one!!!!!!
-  # it can also scale the loan amounts if we divide it by loan amount (a large loan for someon with a low score might signal higher default)
-
-#debt_credit_ratio_None: grouped by SK_ID_CURR, the sum of all credit debt (AMT_CREDIT_SUM_DEBT) over the sum of all credit (AM_CREDIT_SUM).
-
-
-
-#we can create debt to income ratio or net work with income and credit columns
-```
-
-
-```{r}
-#class he said the most basic is a logisitc reggession intercept only
-
-
-model2 <- glm(target ~ 1,
-              data = App_train,
-              family = binomial)
-
-summary(model2)
-```
-So start with the probability of default no predictors?
-
-
-Create a binary variable with ALL ext_source variables for no credit history
-
-DROP ANY COLUMNS WITH OVER 80% of VALUES MISSING
-# Task 1
-Start with glm, no predictors
-
-# Task 2 
-
-91.2%, what we have to beat in order to make the model useful. If we say yes we would be good 90% of the time 
 
 # Task 3
 
@@ -109,13 +67,9 @@ calculate debt to income ratio
 
 interaction -> age*income, income*number of children 
 
-```{r}
-App_train
-```
 
-# Task 4 
 
-use random forest
+
 
 # Task 5
 
@@ -129,6 +83,7 @@ SVM requires us to make changes to categorical variables -> do an SVM for this t
 ```{r}
 set.seed(123)
 
+#keep at 10% because the data set is large
 inTrain <- createDataPartition(App_train$TARGET, p = .1, list = FALSE)
 
 train_set <- App_train[inTrain,]
@@ -148,7 +103,7 @@ prop.table(table(App_train$'TARGET'))
 ```
 
 
-If we just went off the majority classifier to predict if someone would default, they would not 92% of the time. The performance benchmark is 92%.
+If we just went off the majority classifier to predict if someone would default, they would not 91.92% of the time. The performance benchmark is 91.92%.
 
 # Task 3
 **Fit several different logistic regression models using different predictors. Do interaction terms improve the model?  Compare model performance using not just accuracy but also AUC.**
@@ -165,12 +120,21 @@ prob
 ```
 
 
-The odds of the target being one are 0.079. The negative intercept shows tat there are low likelihood of the target being 1
-
+The odds of the target being one are 0.079. The negative intercept shows that there are low likelihood of the target being 1
 
 ```{r}
-#is family = binomial correct?
-glmModel2 <- glm(TARGET~Age + EXT_SOURCE_2+ AMT_INCOME_TOTAL, family = binomial, data = App_train)
+
+predictions1 <- predict(glmModel1, newdata = test_set, type = "response")
+summary(predictions1)
+
+##All thses are returning null???
+mmetric(test_target, predictions1, metric = c("ACC"))
+
+```
+Just using the target gets us to 91.93
+
+```{r}
+glmModel2 <- glm(TARGET~Age + EXT_SOURCE_1 + EXT_SOURCE_2 +  EXT_SOURCE_3 + AMT_INCOME_TOTAL + CNT_CHILDREN + DAYS_EMPLOYED + AMT_CREDIT + AMT_ANNUITY, family = binomial, data = train_set)
 
 summary(glmModel2)
 ```
@@ -181,56 +145,100 @@ Total income is not significant in this model.
 All these effects have a low impact
 
 ```{r}
-glmModel2 <- glm(TARGET~Age + EXT_SOURCE_2+ AMT_INCOME_TOTAL*CNT_CHILDREN, family = binomial, data = App_train)
+predictions2 <- predict(glmModel2, newdata = test_set, type = "response")
+summary(predictions2)
 
-summary(glmModel2)
+
+predictions2 <- ifelse(predictions2>0.5,1,0)
+confusionMatrix(factor(predictions2),factor(test_target))
 ```
-number of children and income are not significant. Their interaction is significant at the 95
+The accuracy increased to 92.74. 
 
 ```{r}
+#adding two interaction terms
+#1 - age*amt_income
+#2amt_income* cnt_children (not family members to stay consistent with the above)
+glmModel3 <- glm(TARGET~ EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3 + Age*AMT_INCOME_TOTAL + AMT_INCOME_TOTAL*CNT_CHILDREN + DAYS_EMPLOYED + AMT_CREDIT + AMT_ANNUITY, family = binomial, data = train_set)
 
-predictions <- predict(glmModel1, newdata = test_set)
-summary(predictions)
-
-##All thses are returning null???
-mmetric(test_target, predictions, "ACC")
-
-
+summary(glmModel3)
 ```
+Interaction terms are not significant. The terms are not really significant on their own.
+
+
 
 ```{r}
-all.vars(formula(glmModel2)) %in% names(test_set)
+predictions3 <- predict(glmModel3, newdata = test_set, type = "response")
+summary(predictions3)
 
-sum(is.na(test_set))
 
-length(test_set)
+predictions3 <- ifelse(predictions3>0.5,1,0)
+confusionMatrix(factor(predictions3),factor(test_target))
 ```
+accuracy increases to 99.75, which is not much better. The interaction terms are not significant predictors on their own. So accuracy might be going up because there are more predictors and R2 is going up and therefore the model is overfitting.
 
+###ADD AUC FROM IMOGEN CODE
 
-NOT sure how to do AUC or ACC since the lengths of predictions and test_set are differnet and I am getting more predictions than in the test set and I have no idea why it is doing that. 
 
 # Task 4
 **Explore using algorithms like random forest and gradient boosting. Compare model performance.**
 
 ```{r}
-train_setNA <- train_set %>% 
-  select(TARGET, CNT_CHILDREN, AMT_INCOME_TOTAL, AMT_CREDIT, EXT_SOURCE_2, NAME_FAMILY_STATUS) %>% 
-  na.omit()
 
-rfModel1 <- randomForest(TARGET~ CNT_CHILDREN + AMT_INCOME_TOTAL + AMT_CREDIT + EXT_SOURCE_2 + NAME_FAMILY_STATUS,
-                         data = train_setNA)
+rfModel1 <- randomForest(TARGET~ Age+ EXT_SOURCE_1+ EXT_SOURCE_2+ EXT_SOURCE_3+ AMT_INCOME_TOTAL+ CNT_CHILDREN+ DAYS_EMPLOYED+  AMT_CREDIT+ AMT_ANNUITY,
+                         data = train_set, ntree = 500, na.action = na.omit)
 
 rfModel1
 ```
 
 ```{r}
-rfModel1Preds <- predict(rfModel1, newdata = test_set)
+rfModel1Preds <- predict(rfModel1, newdata = test_set, type = "response")
 
 summary(rfModel1Preds)
 
-mmetric(test_target, rfModel1Preds, "ACC")
+confusionMatrix(rfModel1Preds,factor(test_target))
 ```
+
+Accuracy is 92.69
+
+BRING IN FEATURE IMPORTANCE IN THE HYPERPARAMETER
+
 # Task 5
 **Perform the data transformations required by a given algorithm.  For example, some algorithms require numeric data and perform better when it has been standardized or normalized. **
 
-do svm
+IMOGEN WILL DO
+
+# Task 6 
+**Experiment with upsampling and downsampling the data to adjust for the imbalanced target variable.  (See APM Ch. 16.)  Does this strategy this improve model performance?**
+
+```{r}
+upsampled_data <- upSample(x= train_set[,-2], y = train_set$TARGET, yname = 'TARGET')
+
+#as.matrix(upsampled_data)
+table(upsampled_data$TARGET)
+```
+
+```{r}
+glmModelUP <- glm(TARGET~1, family = binomial, data = upsampled_data)
+
+summary(glmModelUP)
+```
+
+Need to upsample with GLM2, and random forest
+
+# Task 7
+**Try combining model predictions--this is called an ensemble model--to improve performance.**
+
+TYLER WILL DO
+
+# Task 8
+**Try additional feature engineering to boost model performance. Can you combine variables or bin numeric variables?  Explore the notebooks at Kaggle for data transformation ideas. In particular, use the other data sets at Kaggle--beyond the application data--to create additional features.**
+
+TYLER WILL DO
+
+# Task 9 
+**For machine learning models experiment with hyperparameter tuning  to try to boost performance.**
+
+```{r}
+#we want to do hyperparameter tuning for random forest model -> notes under random forest
+```
+
