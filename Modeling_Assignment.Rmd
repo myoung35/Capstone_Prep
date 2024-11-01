@@ -6,13 +6,13 @@ output: html_document
 ---
 
 ```{r echo = FALSE, warning=FALSE}
-pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR)
+pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR, pROC, gridExtra)
 ```
 
 
-```{r echo=FALSE}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
 App_train <- read.csv("home-credit-default-risk//application_train.csv") 
-App_test <-  read.csv("home-credit-default-risk//application_test.csv") 
+#App_test <-  read.csv("home-credit-default-risk//application_test.csv") 
 
 App_train2 <- read.csv("home-credit-default-risk//application_train.csv") 
 ```
@@ -60,21 +60,13 @@ Most NAs in source 1. over half
 
 # Task 3
 
+**WE DID NOT DO THE DEBT TO INCOME OR LOAN AMOUNT/CREDIT SCORE. DO WE WANT TO BEFORE SUNDAY?
+
 Divide loan amount by credit score
   # it can also scale the loan amounts if we divide it by loan amount (a large loan for someon with a low score might signal higher default)
   
 calculate debt to income ratio
 
-interaction -> age*income, income*number of children 
-
-
-
-
-
-# Task 5
-
-standardize = means are zero 
-SVM requires us to make changes to categorical variables -> do an SVM for this task
 
 
 # Task 1
@@ -176,7 +168,70 @@ confusionMatrix(factor(predictions3),factor(test_target))
 ```
 accuracy increases to 99.75, which is not much better. The interaction terms are not significant predictors on their own. So accuracy might be going up because there are more predictors and R2 is going up and therefore the model is overfitting.
 
-###ADD AUC FROM IMOGEN CODE
+<u> Area Under the Curve </u>
+```{r}
+# Compute ROC curve and AUC
+roc_curve_simple <- roc(test_target, predictions1)
+auc_value_simple <- auc(roc_curve_simple)
+
+# Print the AUC value
+cat("AUC for a simple glm:", auc_value_simple, "\n")
+
+```
+
+```{r}
+
+
+# Compute ROC curve and AUC
+roc_curve_with_features <- roc(test_target, predictions2)
+auc_value_with_features <- auc(roc_curve_with_features)
+
+# Print the AUC value
+cat("AUC with Features:", auc_value_with_features, "\n")
+
+
+```
+
+```{r}
+roc_curve_interactions <- roc(test_target, predictions3)
+auc_value_interactions <- auc(roc_curve_interactions)
+
+# Print the AUC value
+cat("AUC with Interaction Terms:", auc_value_interactions, "\n")
+```
+
+
+
+```{r}
+# compare the plots for AUC for all models so far: 
+
+# Create ROC plots for each model
+
+# Simple model ROC plot
+roc_plot_simple <- ggplot() +
+  geom_line(aes(x = 1 - roc_curve_simple$specificities, y = roc_curve_simple$sensitivities), color = "blue") +
+  geom_abline(linetype = "dashed", color = "gray") +
+  labs(title = paste("Simple Model ROC (AUC =", round(auc(roc_curve_simple), 3), ")"), x = "1 - Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+# Model with terms ROC plot
+roc_plot_terms <- ggplot() +
+  geom_line(aes(x = 1 - roc_curve_with_features$specificities, y = roc_curve_with_features$sensitivities), color = "green") +
+  geom_abline(linetype = "dashed", color = "gray") +
+  labs(title = paste("Model with Terms ROC (AUC =", round(auc(roc_curve_with_features), 3), ")"), x = "1 - Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+# Model with interaction terms ROC plot
+roc_plot_interactions <- ggplot() +
+  geom_line(aes(x = 1 - roc_curve_interactions$specificities, y = roc_curve_interactions$sensitivities), color = "red") +
+  geom_abline(linetype = "dashed", color = "gray") +
+  labs(title = paste("Model with Interactions ROC (AUC =", round(auc(roc_curve_interactions), 3), ")"), x = "1 - Specificity", y = "Sensitivity") +
+  theme_minimal()
+
+
+grid.arrange(roc_plot_simple, roc_plot_terms, roc_plot_interactions, ncol = 1)
+
+```
 
 
 # Task 4
@@ -224,6 +279,8 @@ summary(glmModelUP)
 ```
 
 Need to upsample with GLM2, and random forest
+
+We do not want to downsample this dataset since there are already so few default observations.
 
 # Task 7
 **Try combining model predictions--this is called an ensemble model--to improve performance.**
