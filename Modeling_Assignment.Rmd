@@ -16,7 +16,7 @@ execute:
 ---
 
 ```{r echo = FALSE, warning=FALSE}
-pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR, pROC, gridExtra)
+pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR, pROC, gridExtra, xgboost)
 ```
 
 

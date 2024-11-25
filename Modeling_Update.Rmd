@@ -1,0 +1,218 @@
+---
+title: "Modeling_V2"
+author: "Madalyn Young, Imogen Holdsworth, Tyler Swanson"
+date: "2024-11-03"
+output:
+  html_document:
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    toc-title: "Contents"
+    toc_float:
+      position: "left"
+execute:
+  warning: false
+  message: false
+---
+
+```{r echo = FALSE, warning=FALSE}
+pacman::p_load(caret, psych, rpart, rpart.plot, rJava, RWeka, rminer, matrixStats, knitr, tictoc, tidyverse, dplyr, ggplot2, randomForest, DMWR, pROC, gridExtra, xgboost)
+```
+
+#Data Preprocessing 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+App_train <- read.csv("home-credit-default-risk//application_train.csv")
+
+App_train$TARGET <- as.factor(App_train$TARGET)
+
+burDat <- read.csv("home-credit-default-risk//bureau.csv") %>% 
+  mutate(CREDIT_ACTIVE = as.factor(CREDIT_ACTIVE)) %>% 
+  filter(CREDIT_ACTIVE %in% c('Active', 'Sold')) %>% 
+    group_by(SK_ID_CURR) %>%
+  summarise(sum_amt_debt = sum(AMT_CREDIT_SUM_DEBT, na.rm = TRUE))
+
+datCombined <- left_join(App_train, burDat, by = "SK_ID_CURR")
+
+
+dat_refined <- datCombined[,c("TARGET", "DAYS_BIRTH", "AMT_INCOME_TOTAL", "CNT_CHILDREN", "EXT_SOURCE_1", "EXT_SOURCE_2", "DAYS_EMPLOYED","AMT_CREDIT", "AMT_ANNUITY",  "EXT_SOURCE_3", "FLAG_OWN_CAR","FLAG_OWN_REALTY", "NAME_EDUCATION_TYPE", "sum_amt_debt")]
+
+
+dat_refined <- dat_refined %>%  filter(AMT_INCOME_TOTAL <= 2000000) %>% #42 people default between 1M and 2M 
+  filter(CNT_CHILDREN <= 15) %>% 
+  mutate(Age = -DAYS_BIRTH/365) %>% 
+  mutate(yearsEmployed = -DAYS_EMPLOYED/365) %>% 
+  mutate(EXT_SOURCE_1=replace_na(EXT_SOURCE_1,0)) %>% 
+   mutate(EXT_SOURCE_2=replace_na(EXT_SOURCE_2,0)) %>%
+  mutate(EXT_SOURCE_3=replace_na(EXT_SOURCE_3,0)) %>% 
+  mutate(yearsEmployed = ifelse(yearsEmployed < 0, 0, yearsEmployed)) %>% 
+  mutate(FLAG_OWN_CAR = ifelse(FLAG_OWN_CAR == "Y", 1,0)) %>% 
+  mutate(FLAG_OWN_REALTY = ifelse(FLAG_OWN_REALTY == "Y", 1,0)) %>% 
+  mutate(Education_Encoded = as.numeric(factor(NAME_EDUCATION_TYPE))) %>% 
+  mutate(sum_amt_debt = replace_na(sum_amt_debt,0)) %>% 
+  mutate(DebtToIncome = sum_amt_debt/AMT_INCOME_TOTAL) 
+
+
+#Dummy Encode education, Y/N variables, and clean up years employed
+```
+
+
+# Task 1
+**Split into Train and Test**
+
+```{r}
+set.seed(123)
+
+#keep at 10% because the data set is large
+inTrain <- createDataPartition(dat_refined$TARGET, p = .1, list = FALSE)
+
+
+train_set <- dat_refined[inTrain,]
+test_set <- dat_refined[-inTrain,]
+
+test_target <- dat_refined[-inTrain,1]
+
+
+```
+
+# Task 2
+**Identify the majority classifier**
+
+```{r}
+prop.table(table(App_train$'TARGET'))
+```
+
+If we just used the majority class to predict we would be correct 91.9% of the time
+
+
+# Task 3
+**Logistic Regression Models**
+
+```{r}
+glmModel1 <- glm(TARGET~1, family = binomial, data = train_set)
+
+summary(glmModel1)
+```
+
+```{r}
+prob <- exp(coef(glmModel1)[1]) / (1 + exp(coef(glmModel1)[1]))
+prob
+```
+8% chance of the target being 1
+
+```{r}
+predictions1 <- predict(glmModel1, newdata = test_set, type = "response")
+summary(predictions1)
+
+
+mmetric(test_target, predictions1, metric = c("ACC"))
+
+```
+
+using a basic glm model we can predict with 91.9267% accuracy which is slightly lower than the majority class classifier
+
+```{r}
+glmModel2 <- glm(TARGET~CNT_CHILDREN + Age + yearsEmployed + EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3 + AMT_ANNUITY + AMT_CREDIT + AMT_INCOME_TOTAL + Education_Encoded + DebtToIncome, family = "binomial", data = train_set)
+
+summary(glmModel2)
+```
+Most significant variables -> age, years employed, credit score, education, debt to income
+
+```{r}
+predictions2 <- predict(glmModel2, newdata = test_set, type = "response")
+summary(predictions2)
+
+
+mmetric(test_target, predictions2, metric = c("ACC"))
+
+```
+This model actually lowered my accuracy to 91.918%
+
+```{r}
+glmModel3 <- glm(TARGET~ Age + yearsEmployed + EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3 + AMT_ANNUITY + AMT_CREDIT + AMT_INCOME_TOTAL*CNT_CHILDREN + Education_Encoded + DebtToIncome, family = "binomial", data = train_set)
+
+summary(glmModel3)
+```
+
+# Task 4
+**Random Forest**
+```{r}
+rfModel1 <- randomForest(TARGET~ Age + yearsEmployed + EXT_SOURCE_1 + EXT_SOURCE_2 + EXT_SOURCE_3 + AMT_ANNUITY + AMT_CREDIT + AMT_INCOME_TOTAL + Education_Encoded + DebtToIncome, data = train_set)
+
+rfModel1
+```
+
+```{r}
+rfModel1Preds <- predict(rfModel1, newdata = test_set, type = "response")
+
+summary(rfModel1Preds)
+
+confusionMatrix(rfModel1Preds,factor(test_target))
+```
+The accuracy of this mode is 91.93% which is better than majority class! The random forest in our original modeling assignment was better 
+
+```{r}
+# random forest model
+
+rf_model <- randomForest(TARGET ~ ., data = train_set, importance = TRUE, ntree = 50)
+
+# order the importance from highest to lowest
+
+importance_df <- as.data.frame(importance(rf_model))
+importance_df <- importance_df[order(-importance_df$MeanDecreaseGini), ]
+print(importance_df)
+```
+
+years employed is the most accurate
+
+
+# XGBoost
+
+```{r}
+train_matrix <- as.matrix(train_set[,c(-1,-13)])
+test_matrix <- as.matrix(test_set[,c(-1,-13)])
+
+train_label <- as.numeric(as.character(train_set$TARGET))
+test_label <- as.numeric(as.character(test_set$TARGET))
+
+```
+
+```{r}
+dtrain <- xgb.DMatrix(data = train_matrix, label = train_label)
+dtest <- xgb.DMatrix(data = test_matrix, label = test_label)
+```
+
+```{r}
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic", # Use logistic regression for binary classification
+  eval_metric = "logloss" # Evaluation metric for classification
+)
+
+# Train the XGBoost model
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 100,                # Number of boosting iterations
+  watchlist = list(train = dtrain, test = dtest), # Track performance
+  verbose = 1                   # Display training progress
+)
+
+```
+```{r}
+predictionsxg <- predict(xgb_model, newdata = test_matrix)
+
+
+binary_predictions <- ifelse(predictionsxg > 0.5, 1, 0)
+```
+
+```{r}
+confusionMatrix(as.factor(binary_predictions), as.factor(test_label))
+
+# AUC (Area Under the Curve)
+library(pROC)
+auc <- roc(test_label, predictions)
+print(auc$auc)
+```
+
+this is 91.77, even lower
