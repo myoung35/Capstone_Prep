@@ -13,7 +13,7 @@ Our group determined the best model for Home Credit was an XGBoost model using u
 I contributed to this project in a variety of ways. I explored the data in depth before joining the group in modeling which gave us the background to clean and identify important featurs early on. I spent most of my time with data validation and cleaning and building some basic logistic regression models and analyzing the specific variables significance. These feature explorations helped us build the more complext models.
 
 ### Business Value of Solution
-
+The business value derived from the solution is that Home Credit will be able to correctly and confidently identify applicants that default therefore not offer them Home Credit services. This will save Home Credit money because it is more expensive to have a client defualt than it is worthwhile to have the client pay back the loan in full.
 
 ### Challenges we faced
 The largest challenge we faced was the data itself. It was heavily skewed toward non-defaulters. There were a lot of outliers and missing data. We really struggled with imputation and knowing how we needed to fill in those missing values
